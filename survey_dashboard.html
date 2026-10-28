@@ -138,8 +138,7 @@
       </div>
       <div class="card" style="grid-column: span 2">
         <h3>Q1. 2027년 확대 — 현장 수행 가능성</h3>
-        <div class="chart-wrap"><canvas id="chart-q1"></canvas></div>
-        <div class="legend">① 가능 · ② 선결조건 충족 시 가능 · ③ 시기 조정 필요 · ④ 어렵다 · ⑤ 판단곤란</div>
+        <div class="chart-wrap"><canvas id="chart-Q1-ov"></canvas></div>
       </div>
     </div>
     <div class="grid" style="margin-top:14px">
@@ -239,14 +238,26 @@ const PAL_SEQ = ['#dbeafe','#bfdbfe','#93c5fd','#60a5fa','#3b82f6','#1d4ed8'];
 function getCssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function textColor(){ return getCssVar('--ink') || '#1f2937'; }
 
-// --- Tabs ---
-document.querySelectorAll('nav.tabs button').forEach(b=>{
-  b.addEventListener('click',()=>{
-    document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    document.getElementById(b.dataset.tab).classList.add('active');
+// --- Tabs with lazy chart init ---
+const tabInit = {};  // tab name -> initialized?
+function activateTab(name){
+  document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+  const btn = document.querySelector(`nav.tabs button[data-tab="${name}"]`);
+  if (btn) btn.classList.add('active');
+  const sec = document.getElementById(name);
+  if (sec) sec.classList.add('active');
+  // After section is visible, init its charts (requires size)
+  requestAnimationFrame(() => {
+    if (tabInit[name]) return;
+    try {
+      initTab(name);
+      tabInit[name] = true;
+    } catch(e) { console.error('tab init failed', name, e); }
   });
+}
+document.querySelectorAll('nav.tabs button').forEach(b=>{
+  b.addEventListener('click', ()=> activateTab(b.dataset.tab));
 });
 
 // --- Theme ---
@@ -258,7 +269,9 @@ function toggleTheme(){
   // Re-render charts to pick up colors
   Object.values(chartInstances).forEach(c => c && c.destroy());
   Object.keys(chartInstances).forEach(k => delete chartInstances[k]);
-  renderAll();
+  Object.keys(tabInit).forEach(k => delete tabInit[k]);
+  const active = document.querySelector('nav.tabs button.active');
+  if (active) { requestAnimationFrame(() => { initTab(active.dataset.tab); tabInit[active.dataset.tab] = true; }); }
 }
 try { const t = localStorage.getItem('theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch(e){}
 
@@ -500,23 +513,33 @@ function renderRaw(){
   run();
 }
 
-function renderAll(){
+// Guarded chart invocation
+function safe(fn, label){ try{ fn(); } catch(e){ console.error('chart failed:', label, e); } }
+
+function initTab(name){
+  if (name === 'overview') {
+    safe(catChart, 'cat');
+    safe(() => singleChart('Q1', 'chart-Q1-ov'), 'Q1-ov');
+  } else if (name === 'common') {
+    safe(() => singleChart('Q1'), 'Q1');
+    safe(() => multiChart('Q1-2'), 'Q1-2');
+    safe(() => multiChart('Q2'), 'Q2');
+    safe(q3Matrix, 'Q3');
+    safe(q3_2Chart, 'Q3-2');
+    safe(q5Chart, 'Q5');
+    safe(() => singleChart('Q6'), 'Q6');
+    safe(() => singleChart('Q7'), 'Q7');
+    safe(() => singleChart('Q8'), 'Q8');
+    safe(() => singleChart('Q10'), 'Q10');
+    safe(q11Chart, 'Q11');
+  } else if (name === 'econ') {
+    ['E1','E2','E3','E4','E5','E6'].forEach(qid => safe(() => singleChart(qid), qid));
+  }
+}
+
+function renderStaticContent(){
   renderKPI();
-  catChart();
-  singleChart('Q1');
-  multiChart('Q1-2');
-  multiChart('Q2');
-  q3Matrix();
-  q3_2Chart();
-  q5Chart();
-  singleChart('Q6');
-  singleChart('Q7');
-  singleChart('Q8');
-  singleChart('Q10');
-  q11Chart();
-  ['E1','E2','E3','E4','E5','E6'].forEach(qid => singleChart(qid));
-  renderQuestionList('field-questions', '');
-  // Overwrite: field tab shows D/C/B/R, wrap tab shows Z
+  // Field tab (D/C/B/R)
   const fieldEl = document.getElementById('field-questions');
   fieldEl.innerHTML = '';
   ['D','C','B','R'].forEach(prefix => {
@@ -544,7 +567,10 @@ function renderAll(){
   renderPeople();
   renderRaw();
 }
-renderAll();
+
+renderStaticContent();
+// Initialize overview immediately (it's the active tab)
+requestAnimationFrame(() => { initTab('overview'); tabInit['overview'] = true; });
 </script>
 </body>
 </html>
