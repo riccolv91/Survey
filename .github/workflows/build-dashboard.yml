@@ -1,0 +1,49 @@
+name: Build survey dashboard
+
+# 저장소 루트에 .docx / .pdf 설문결과 파일이 추가·변경되면
+# scripts/parse.py + build_html.py 를 돌려 survey_dashboard.html 을 재생성하고
+# 변경이 있으면 같은 브랜치에 커밋한다.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.docx'
+      - '*.pdf'
+      - 'scripts/**'
+      - '.github/workflows/build-dashboard.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pdftotext (poppler)
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: Parse surveys → JSON
+        run: python3 scripts/parse.py
+
+      - name: Build dashboard HTML
+        run: python3 scripts/build_html.py
+
+      - name: Commit regenerated dashboard if changed
+        run: |
+          if git diff --quiet -- survey_dashboard.html; then
+            echo "No change in survey_dashboard.html"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add survey_dashboard.html
+          git commit -m "Rebuild survey_dashboard.html from latest survey files"
+          git push
